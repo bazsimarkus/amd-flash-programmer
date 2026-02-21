@@ -109,8 +109,8 @@ class App:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("AM29F010 / AM29F040B Flash Programmer")
-        self.root.geometry("1100x740")
-        self.root.minsize(1300, 800)
+        self.root.geometry("1400x800")
+        self.root.minsize(1400, 800)
         self.root.configure(bg=C["bg"])
 
         self.serial_port: serial.Serial | None = None
@@ -220,13 +220,17 @@ class App:
 
         ttk.Label(cg, text="Port:", style="W.TLabel").grid(row=0, column=0, sticky="w", padx=(0,3))
         self.cb_port = ttk.Combobox(cg, textvariable=self.var_port,
-                                     width=9, state="readonly", font=FU)
+                                     width=9, font=FU,
+                                     validate="key",
+                                     validatecommand=(self.root.register(lambda: False), '%d'))
         self.cb_port.grid(row=0, column=1, padx=(0,2))
         ttk.Button(cg, text="↺", command=self._refresh_ports, width=2).grid(row=0, column=2, padx=(0,6))
 
         ttk.Label(cg, text="Baud:", style="W.TLabel").grid(row=0, column=3, sticky="w", padx=(0,3))
         self.cb_baud = ttk.Combobox(cg, textvariable=self.var_baud,
-                                     values=BAUD_RATES, width=8, state="readonly", font=FU)
+                                     values=BAUD_RATES, width=8, font=FU,
+                                     validate="key",
+                                     validatecommand=(self.root.register(lambda: False), '%d'))
         self.cb_baud.grid(row=0, column=4, padx=(0,8))
 
         self.btn_connect = ttk.Button(cg, text="Connect",
@@ -234,13 +238,18 @@ class App:
                                        style="Accent.TButton")
         self.btn_connect.grid(row=0, column=5)
 
+        # -- Help button (right side of header row)
+        ttk.Button(row1, text="❓ Help", command=self._show_help).pack(side="right", padx=(0,4))
+
         # -- Chip group
         chg = ttk.LabelFrame(row1, text="Chip", padding=(6,4))
         chg.pack(side="left", padx=(0,8))
 
         self.cb_chip = ttk.Combobox(chg, textvariable=self.var_chip,
                                      values=list(CHIP_DB.keys()),
-                                     width=19, state="readonly", font=FU)
+                                     width=19, font=FU,
+                                     validate="key",
+                                     validatecommand=(self.root.register(lambda: False), '%d'))
         self.cb_chip.grid(row=0, column=0, padx=(0,4))
         self.cb_chip.bind("<<ComboboxSelected>>", self._on_chip_change)
 
@@ -346,18 +355,22 @@ class App:
         # Bottom separator
         tk.Frame(toolbar, bg=C["border"], height=1).pack(fill="x")
 
-        # ── Notebook ──────────────────────────────────────────────────────────
-        nb = ttk.Notebook(self.root)
-        nb.pack(fill="both", expand=True)
-        self.notebook = nb
+        # ── Split pane: Event Log (left) | Hex View (right) ──────────────────
+        paned = tk.PanedWindow(self.root, orient="horizontal",
+                               bg=C["border"], sashwidth=5, sashpad=0,
+                               bd=0, relief="flat")
+        paned.pack(fill="both", expand=True)
 
-        hex_f = ttk.Frame(nb)
-        nb.add(hex_f, text="  Hex View  ")
+        log_f = ttk.Frame(paned)
+        paned.add(log_f, minsize=200)
+        self._build_log_view(log_f)
+
+        hex_f = ttk.Frame(paned)
+        paned.add(hex_f, minsize=300)
         self._build_hex_view(hex_f)
 
-        log_f = ttk.Frame(nb)
-        nb.add(log_f, text="  Event Log  ")
-        self._build_log_view(log_f)
+        # Set initial sash position after window is rendered
+        self.root.after(100, lambda: paned.sash_place(0, 420, 0))
 
         # ── Status bar ────────────────────────────────────────────────────────
         sbar = tk.Frame(self.root, bg=C["border"], pady=3)
@@ -370,10 +383,13 @@ class App:
     def _build_hex_view(self, parent):
         tb = tk.Frame(parent, bg=C["panel"], pady=3)
         tb.pack(fill="x")
+        tk.Label(tb, text="Hex View", font=FUB,
+                 bg=C["panel"], fg=C["accent"]).pack(side="left", padx=6)
         self.lbl_hex_info = tk.Label(tb, text="No data loaded", font=FU,
                                       bg=C["panel"], fg=C["text_dim"])
         self.lbl_hex_info.pack(side="left", padx=6)
         ttk.Button(tb, text="Clear", command=self._clear_hex).pack(side="right", padx=6)
+        tk.Frame(parent, bg=C["border"], height=1).pack(fill="x")
 
         self.hex_text = tk.Text(parent, font=FMS,
                                  bg=C["hex_bg"], fg=C["hex_data"],
@@ -393,6 +409,14 @@ class App:
         self.hex_text.tag_configure("ascii", foreground=C["hex_ascii"])
 
     def _build_log_view(self, parent):
+        tb = tk.Frame(parent, bg=C["panel"], pady=3)
+        tb.pack(fill="x")
+        tk.Label(tb, text="Event Log", font=FUB,
+                 bg=C["panel"], fg=C["accent"]).pack(side="left", padx=6)
+        ttk.Button(tb, text="Save Log", command=self._save_log).pack(side="right", padx=(0,4))
+        ttk.Button(tb, text="Clear", command=self._clear_log).pack(side="right", padx=(0,2))
+        tk.Frame(parent, bg=C["border"], height=1).pack(fill="x")
+
         self.log_text = tk.Text(parent, font=FMS,
                                  bg=C["hex_bg"], fg=C["text"],
                                  relief="flat", padx=8, pady=6,
@@ -963,7 +987,6 @@ class App:
         self.hex_text.config(state="disabled")
         self.lbl_hex_info.config(
             text=f"{len(data):,} bytes  │  0x{base:06X} – 0x{base+len(data)-1:06X}")
-        self.notebook.select(0)
 
     def _clear_hex(self):
         self.hex_text.config(state="normal")
@@ -984,6 +1007,150 @@ class App:
             with open(fp, "wb") as f:
                 f.write(self.current_data)
             self._log(f"Saved {len(self.current_data):,} bytes → {fp}", "ok")
+
+    # ── LOG ACTIONS ──────────────────────────────────────────────────────────
+    def _clear_log(self):
+        self.log_text.config(state="normal")
+        self.log_text.delete("1.0", "end")
+        self.log_text.config(state="disabled")
+
+    def _save_log(self):
+        fp = filedialog.asksaveasfilename(
+            defaultextension=".log",
+            filetypes=[("Log files", "*.log"), ("Text files", "*.txt"), ("All", "*.*")])
+        if fp:
+            content = self.log_text.get("1.0", "end")
+            with open(fp, "w", encoding="utf-8") as f:
+                f.write(content)
+            self._log(f"Log saved → {fp}", "ok")
+
+    # ── HELP ─────────────────────────────────────────────────────────────────
+    def _show_help(self):
+        win = tk.Toplevel(self.root)
+        win.title("Help — AM29F010 / AM29F040B Flash Programmer")
+        win.geometry("680x560")
+        win.resizable(True, True)
+        win.configure(bg=C["bg"])
+        win.grab_set()
+
+        # Header
+        tk.Frame(win, bg=C["hdr_bg"], pady=7).pack(fill="x")
+        tk.Label(win.winfo_children()[-1],
+                 text="Flash Programmer — Help",
+                 font=FH, bg=C["hdr_bg"], fg=C["hdr_fg"]).pack(side="left", padx=12)
+
+        # Scrollable text area
+        frame = tk.Frame(win, bg=C["bg"])
+        frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        txt = tk.Text(frame, font=FU, bg=C["panel"], fg=C["text"],
+                      relief="flat", padx=12, pady=10, wrap="word",
+                      state="normal")
+        sb = ttk.Scrollbar(frame, command=txt.yview)
+        txt.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        txt.pack(fill="both", expand=True)
+
+        txt.tag_configure("h1",  font=("Segoe UI", 11, "bold"), foreground=C["accent"],
+                          spacing1=10, spacing3=4)
+        txt.tag_configure("h2",  font=("Segoe UI", 9,  "bold"), foreground=C["text"],
+                          spacing1=8, spacing3=2)
+        txt.tag_configure("body", font=FU, foreground=C["text"], spacing3=3)
+        txt.tag_configure("code", font=FM, foreground=C["accent"],
+                          background="#EEF4FF")
+        txt.tag_configure("warn", font=FU, foreground=C["err"])
+
+        help_content = [
+            ("h1",  "Overview"),
+            ("body","This tool programs AM29F010 (128 KB) and AM29F040B (512 KB) parallel flash "
+                    "chips via an Arduino Nano acting as a USB-to-parallel bridge. The Arduino "
+                    "must be running the FLASH_PROGRAMMER.ino sketch."),
+
+            ("h1",  "Connection"),
+            ("h2",  "Port"),
+            ("body","Select the COM port that corresponds to your Arduino Nano. Click ↺ to "
+                    "refresh the port list if the Arduino was connected after the app started."),
+            ("h2",  "Baud Rate"),
+            ("body","Must match the baud rate set in the Arduino sketch. Default: 115200."),
+            ("h2",  "Connect / Disconnect"),
+            ("body","Click Connect to open the serial port and initialize the Arduino. The app "
+                    "will pulse DTR to reset the board and wait up to 3 seconds for it to boot. "
+                    "If the Arduino does not respond, check the port, baud rate, and that the "
+                    "correct sketch is uploaded."),
+
+            ("h1",  "Chip Selection"),
+            ("body","Choose your flash chip from the dropdown. Click Apply to send the chip "
+                    "index to the Arduino. This configures the correct address range and timing."),
+            ("h2",  "Read Chip ID"),
+            ("body","Sends the autoselect command sequence to the chip and reads back the "
+                    "manufacturer and device ID bytes. Use this to confirm you have the right "
+                    "chip inserted and that the wiring is correct."),
+
+            ("h1",  "Operations"),
+            ("h2",  "Read Memory"),
+            ("body","Reads the flash contents over the address range specified in the "
+                    "Start / End fields and displays the result in the Hex View panel. "
+                    "The data is also held in memory so you can save it as a binary file."),
+            ("h2",  "Erase Chip"),
+            ("body","Issues a full-chip erase command (AMD CFI sector erase sequence). "
+                    "All bytes will be set to 0xFF. This typically takes 1–5 seconds. "
+                    "⚠ All existing data will be permanently erased."),
+            ("h2",  "Write File…"),
+            ("body","Opens a file picker, then writes the selected binary to the flash "
+                    "chip starting at address 0. Programming uses a byte-by-byte ACK "
+                    "handshake at ~5 KB/s for reliability. If Verify after write is "
+                    "checked, a full readback comparison is run automatically."),
+            ("h2",  "Verify vs File…"),
+            ("body","Reads the chip and compares it byte-for-byte against a reference "
+                    "binary file you select. Reports pass/fail and lists the first 10 "
+                    "mismatches if the verification fails."),
+            ("h2",  "Save Binary"),
+            ("body","Saves the last data read from the chip as a .bin / .rom file "
+                    "to disk. Enabled only after a successful read."),
+
+            ("h1",  "Read Range"),
+            ("body","Enter hex addresses (without 0x prefix) for Start and End. "
+                    "Click Full Chip to auto-fill the range for the selected chip. "
+                    "Example: Start "),
+            ("code","000000"),
+            ("body"," End "),
+            ("code","07FFFF"),
+            ("body"," reads all 512 KB."),
+
+            ("h1",  "Hex View  /  Event Log"),
+            ("body","The window is split into two panels. The left panel shows the Event Log "
+                    "with timestamped messages for every operation. The right panel shows the "
+                    "Hex View of the last read data. You can drag the divider between them to "
+                    "resize the panels."),
+            ("body","Use the Clear button in each panel to reset its contents. Use Save Log "
+                    "to export the event log to a .log text file."),
+
+            ("h1",  "Troubleshooting"),
+            ("h2",  "Arduino not responding"),
+            ("body","• Verify the correct COM port and baud rate (115200).\n"
+                    "• Press the Arduino Reset button, then click Connect.\n"
+                    "• Re-upload FLASH_PROGRAMMER.ino and try again."),
+            ("h2",  "Verify failures after write"),
+            ("body","• Check VCC and GND connections to the flash chip.\n"
+                    "• Ensure the chip was fully erased before writing.\n"
+                    "• Try reducing baud rate to 57600 for noisy setups."),
+            ("h2",  "Chip ID reads as FF/FF"),
+            ("body","• Check address and data bus wiring.\n"
+                    "• Confirm the chip is powered and /CE, /OE, /WE are connected correctly."),
+        ]
+
+        for i, (tag, text) in enumerate(help_content):
+            # Add a blank line before h1/h2 headings (except the very first item)
+            if tag in ("h1", "h2") and i > 0:
+                txt.insert("end", "\n")
+            txt.insert("end", text, tag)
+            if tag in ("h1", "h2"):
+                txt.insert("end", "\n")
+
+        txt.config(state="disabled")
+
+        ttk.Button(win, text="Close", command=win.destroy,
+                   style="Accent.TButton").pack(pady=(0,10))
 
 
 # ─────────────────────────────────────────────────────────────────────────────

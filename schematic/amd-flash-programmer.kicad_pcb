@@ -6627,8 +6627,8 @@
 			(justify left bottom)
 		)
 	)
-	(gr_text "29F SERIES FLASH PROGRAMMER V1.0 - 2026 B.MARKUS"
-		(at 12.3 89.6 0)
+	(gr_text "29F SERIES FLASH PROGRAMMER V1.0 - 2026 B. MARKUS"
+		(at 11.176 89.6 0)
 		(layer "F.SilkS")
 		(uuid "a0f30ef9-5fcc-46e6-96f3-fd7d9e0cfaa9")
 		(effects
